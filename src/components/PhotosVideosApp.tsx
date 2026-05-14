@@ -232,5 +232,3 @@ function Section({
     </section>
   );
 }
-
-export const _kept = Input;
