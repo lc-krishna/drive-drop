@@ -1,3 +1,5 @@
+import defaultServiceAccount from "@/config/service-account.json";
+
 export type FileStatus = "uploading" | "done" | "failed";
 export type SessionStatus = "pending" | "done" | "partial" | "failed";
 
