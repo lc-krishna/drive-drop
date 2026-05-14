@@ -43,6 +43,17 @@ export async function findChildByName(
   return folders.find((f) => f.name.toLowerCase() === lower) || null;
 }
 
+// Matches any folder whose name contains "photos" and "videos" in that order,
+// e.g. "Photos & Videos", "10 | Photos & Videos", "Photos and Videos".
+const PV_PATTERN = /photos.{0,20}videos/i;
+
+export async function findPhotosVideosFolder(
+  parentId: string,
+): Promise<DriveFolder | null> {
+  const folders = await listFolders(parentId);
+  return folders.find((f) => PV_PATTERN.test(f.name)) || null;
+}
+
 const MULTIPART_LIMIT = 5 * 1024 * 1024;
 const CHUNK = 8 * 1024 * 1024;
 

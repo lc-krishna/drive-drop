@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { createFolder, findChildByName, listFolders, type DriveFolder } from "@/lib/drive";
+import { createFolder, findPhotosVideosFolder, listFolders, type DriveFolder } from "@/lib/drive";
 
 export type Crumb = { id: string; name: string };
 
@@ -31,7 +31,7 @@ export function useFolderTree() {
       setError(null);
       setMissingPV(false);
       try {
-        const pv = await findChildByName(park.folderId, "Photos & Videos");
+        const pv = await findPhotosVideosFolder(park.folderId);
         if (!pv) {
           setCrumbs([{ id: park.folderId, name: park.park }]);
           setChildren(await listFolders(park.folderId));

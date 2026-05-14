@@ -9,6 +9,7 @@ import { FileGrid, type StagedFile } from "./FileGrid";
 import { FolderNavigator } from "./FolderNavigator";
 import { UploadProgress } from "./UploadProgress";
 import { SettingsModal } from "./SettingsModal";
+import { LoginModal, isLoggedIn } from "./LoginModal";
 import { useFolderTree } from "@/hooks/useFolderTree";
 import { useUploadSession } from "@/hooks/useUploadSession";
 import { isConfigured } from "@/lib/auth";
@@ -18,6 +19,7 @@ type Park = { id: number; park: string; folderId: string };
 const VIDEO_EXT = ["mp4", "mov", "avi", "mkv", "webm"];
 
 export function PhotosVideosApp() {
+  const [authenticated, setAuthenticated] = useState(() => isLoggedIn());
   const [staged, setStaged] = useState<StagedFile[]>([]);
   const [applyAll, setApplyAll] = useState(false);
   const [bulkName, setBulkName] = useState("");
@@ -31,6 +33,10 @@ export function PhotosVideosApp() {
   useEffect(() => {
     if (!isConfigured()) setNeedsSetup(true);
   }, []);
+
+  if (!authenticated) {
+    return <LoginModal onSuccess={() => setAuthenticated(true)} />;
+  }
 
   useEffect(() => {
     return () => staged.forEach((s) => URL.revokeObjectURL(s.url));
