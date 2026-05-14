@@ -1,3 +1,5 @@
+import defaultServiceAccount from "@/config/service-account.json";
+
 export type FileStatus = "uploading" | "done" | "failed";
 export type SessionStatus = "pending" | "done" | "partial" | "failed";
 
@@ -37,13 +39,15 @@ export const storage = {
     localStorage.removeItem(HISTORY_KEY);
   },
   getServiceAccount(): string | null {
-    if (typeof localStorage === "undefined") return null;
+    if (typeof localStorage === "undefined") {
+      return JSON.stringify(defaultServiceAccount);
+    }
     const v = localStorage.getItem(SA_KEY);
-    if (!v) return null;
+    if (!v) return JSON.stringify(defaultServiceAccount);
     try {
       return atob(v);
     } catch {
-      return null;
+      return JSON.stringify(defaultServiceAccount);
     }
   },
   setServiceAccount(json: string) {
