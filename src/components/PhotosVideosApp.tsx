@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Camera, Settings, Upload as UploadIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Sidebar } from "./Sidebar";
 import { FileDropZone } from "./FileDropZone";
