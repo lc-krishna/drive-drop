@@ -4,6 +4,7 @@ import { storage } from "./storage";
 type ServiceAccount = {
   client_email: string;
   private_key: string;
+  private_key_id: string;
   token_uri?: string;
 };
 
@@ -21,18 +22,28 @@ export async function getAccessToken(): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.token;
   const sa = getSA();
   const now = Math.floor(Date.now() / 1000);
-  const pk = await importPKCS8(sa.private_key.replace(/\\n/g, "\n"), "RS256");
+
+  // Normalise the PEM key — handles both real newlines (from JSON.parse) and
+  // escaped "\n" strings that some copy/paste flows produce.
+  const pem = sa.private_key.includes("\\n")
+    ? sa.private_key.replace(/\\n/g, "\n")
+    : sa.private_key;
+
+  const pk = await importPKCS8(pem, "RS256");
+
   const jwt = await new SignJWT({
     scope: "https://www.googleapis.com/auth/drive",
   })
-    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+    // kid (key ID) is required — Google uses it to look up the matching public
+    // key.  Without it the signature verification fails with "Invalid JWT
+    // Signature" even when the private key itself is correct.
+    .setProtectedHeader({ alg: "RS256", typ: "JWT", kid: sa.private_key_id })
     .setIssuer(sa.client_email)
     .setAudience(sa.token_uri || "https://oauth2.googleapis.com/token")
     .setIssuedAt(now)
     .setExpirationTime(now + 3600)
-    // sub must NOT be set for service accounts not doing domain-wide delegation;
-    // setting it to the service account email causes Google to reject with
-    // "Invalid JWT Signature" because it treats it as a user-impersonation request.
+    // sub must NOT be set for service accounts that are not doing domain-wide
+    // delegation; including it causes Google to reject the token.
     .sign(pk);
 
   const body = new URLSearchParams({
