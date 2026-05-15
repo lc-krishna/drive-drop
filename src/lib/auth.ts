@@ -30,7 +30,9 @@ export async function getAccessToken(): Promise<string> {
     .setAudience(sa.token_uri || "https://oauth2.googleapis.com/token")
     .setIssuedAt(now)
     .setExpirationTime(now + 3600)
-    .setSubject(sa.client_email)
+    // sub must NOT be set for service accounts not doing domain-wide delegation;
+    // setting it to the service account email causes Google to reject with
+    // "Invalid JWT Signature" because it treats it as a user-impersonation request.
     .sign(pk);
 
   const body = new URLSearchParams({
