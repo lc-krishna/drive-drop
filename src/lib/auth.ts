@@ -1,4 +1,3 @@
-import { SignJWT, importPKCS8 } from "jose";
 import { storage } from "./storage";
 
 type ServiceAccount = {
@@ -18,43 +17,78 @@ function getSA(): ServiceAccount {
   return sa;
 }
 
-export async function getAccessToken(): Promise<string> {
-  if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.token;
-  const sa = getSA();
-  const now = Math.floor(Date.now() / 1000);
+// base64url-encode a binary string
+function b64url(binary: string): string {
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
 
-  // Normalise the PEM key — handles both real newlines (from JSON.parse) and
-  // escaped "\n" strings that some copy/paste flows produce.
+// base64url-encode a UTF-8 JSON object
+function jsonB64url(obj: object): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
+  return b64url(binary);
+}
+
+async function signJWT(sa: ServiceAccount): Promise<string> {
+  // Normalise PEM — handles both real newlines and escaped "\n" strings
   const pem = sa.private_key.includes("\\n")
     ? sa.private_key.replace(/\\n/g, "\n")
     : sa.private_key;
 
-  const pk = await importPKCS8(pem, "RS256");
+  // Strip PEM envelope and decode to raw DER bytes
+  const b64 = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/, "")
+    .replace(/-----END PRIVATE KEY-----/, "")
+    .replace(/\s/g, "");
+  const keyBytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
-  const jwt = await new SignJWT({
+  // Import with native Web Crypto — no jose dependency
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    keyBytes,
+    { name: "RSASSA-PKCS1-v1_5", hash: { name: "SHA-256" } },
+    false,
+    ["sign"],
+  );
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = jsonB64url({ alg: "RS256", typ: "JWT", kid: sa.private_key_id });
+  const payload = jsonB64url({
+    iss: sa.client_email,
+    aud: sa.token_uri ?? "https://oauth2.googleapis.com/token",
     scope: "https://www.googleapis.com/auth/drive",
-  })
-    // kid (key ID) is required — Google uses it to look up the matching public
-    // key.  Without it the signature verification fails with "Invalid JWT
-    // Signature" even when the private key itself is correct.
-    .setProtectedHeader({ alg: "RS256", typ: "JWT", kid: sa.private_key_id })
-    .setIssuer(sa.client_email)
-    .setAudience(sa.token_uri || "https://oauth2.googleapis.com/token")
-    .setIssuedAt(now)
-    .setExpirationTime(now + 3600)
-    // sub must NOT be set for service accounts that are not doing domain-wide
-    // delegation; including it causes Google to reject the token.
-    .sign(pk);
-
-  const body = new URLSearchParams({
-    grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-    assertion: jwt,
+    iat: now,
+    exp: now + 3600,
   });
-  const res = await fetch("https://oauth2.googleapis.com/token", {
+
+  const signingInput = `${header}.${payload}`;
+  const sigBuffer = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    new TextEncoder().encode(signingInput),
+  );
+  const sig = b64url(
+    Array.from(new Uint8Array(sigBuffer), (b) => String.fromCharCode(b)).join(""),
+  );
+
+  return `${signingInput}.${sig}`;
+}
+
+export async function getAccessToken(): Promise<string> {
+  if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.token;
+
+  const sa = getSA();
+  const jwt = await signJWT(sa);
+
+  const res = await fetch(sa.token_uri ?? "https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: jwt,
+    }),
   });
+
   if (!res.ok) throw new Error(`Token exchange failed: ${await res.text()}`);
   const data = (await res.json()) as { access_token: string; expires_in: number };
   cachedToken = { token: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
